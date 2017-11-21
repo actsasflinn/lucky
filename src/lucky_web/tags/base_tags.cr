@@ -1,10 +1,27 @@
-module LuckyWeb::BaseTags
+ module LuckyWeb::BaseTags
   TAGS             = %i(a b body div em small fieldset h1 h2 h3 h4 h5 h6 head html i label li ol option s script span strong table tbody td textarea thead th title tr u ul form footer header article aside bdi details dialog figcaption figure main mark menuitem meter nav progress rp rt ruby section summary time wbr option)
   RENAMED_TAGS     = {"para": "p", "select_tag": "select"}
   EMPTY_TAGS       = %i(img br input meta)
   EMPTY_HTML_ATTRS = {} of String => String
 
   @view = IO::Memory.new
+
+  def content_tag(name : String | Symbol, options = EMPTY_HTML_ATTRS, **other_options, &block)
+    merged_options = merge_options(other_options, options)
+    tag_attrs = build_tag_attrs(merged_options)
+    @view << "<#{name.to_s}" << tag_attrs << ">"
+    yield
+    @view << "</#{name.to_s}>"
+    # ugly hack follows
+    result = @view
+    @view = IO::Memory.new
+    result
+  end
+
+  def content_tag(name : String | Symbol, inner : String | Nil, options = EMPTY_HTML_ATTRS, **other_options, escape = false)
+    block = -> { text(inner.to_s, escape: escape) }
+    content_tag(name, options, **other_options, &block)
+  end
 
   macro generate_tag_methods(method_name, tag)
     def {{method_name.id}}(content : String? = "", options = EMPTY_HTML_ATTRS, **other_options)
@@ -55,8 +72,8 @@ module LuckyWeb::BaseTags
     end
   {% end %}
 
-  def text(content : String | LuckyWeb::AllowedInTags)
-    @view << HTML.escape(content.to_s)
+  def text(content : String | LuckyWeb::AllowedInTags, escape = true)
+    @view << (escape ? HTML.escape(content.to_s) : content.to_s)
   end
 
   private def build_tag_attrs(options)
